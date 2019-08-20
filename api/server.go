@@ -132,8 +132,7 @@ func Start(dir, network string, port, storeMode int) error {
 
 	// set memory first storemode for Pudge if set
 	if storeMode == 2 {
-		cfg := pudge.DefaultConfig
-		cfg.StoreMode = storeMode
+		pudge.DefaultConfig.StoreMode = storeMode
 	}
 
 	// start the server
