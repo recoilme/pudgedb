@@ -101,13 +101,22 @@ func (s *Server) DeleteFile(ctx context.Context, cmdDelFile *CmdDelFile) (*Empty
 }
 
 // Start - start server
-func Start(dir string, grpcPort int) error {
+// The dir - current dir (by default) - may be used in adroid/ios libs in future
+// The network must be "tcp", "tcp4", "tcp6", "unix" or "unixpacket". "tcp" is default
+// If the port in the address parameter is empty or "0", as in
+// "127.0.0.1:" or "[::1]:0", a port number is automatically chosen.
+// storeMode for Pudge, use storeMode==2 for memoryfirst store mode, filefirst,(0) - is default
+func Start(dir, network string, port, storeMode int) error {
+	if network == "" {
+		network = "tcp"
+	}
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", grpcPort))
+	lis, err := net.Listen(network, fmt.Sprintf(":%d", port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 		return err
 	}
+	log.Println("Start:" + lis.Addr().String())
 
 	// create a server instance
 	s := Server{}
@@ -120,6 +129,12 @@ func Start(dir string, grpcPort int) error {
 
 	// start the server
 	go onKill()
+
+	// set memory first storemode for Pudge if set
+	if storeMode == 2 {
+		cfg := pudge.DefaultConfig
+		cfg.StoreMode = storeMode
+	}
 
 	// start the server
 	if err := grpcServer.Serve(lis); err != nil {
