@@ -1,8 +1,8 @@
 syntax = "proto3";
 
 option java_multiple_files = false;
-option java_package = "org.okdb.okdbapi";
-option java_outer_classname = "OkdbApi";
+option java_package = "com.github.pudgedb.api";
+option java_outer_classname = "PudgeDbApi";
 
 package api;
 
@@ -66,7 +66,7 @@ message CmdDelFile {
   string file = 1;
 }
 
-service Okdb {
+service PudgeDbApi {
   rpc SayOk(Empty) returns (Ok) {}
   rpc Set(CmdSet) returns (Empty) {}
   rpc Get(CmdGet) returns (ResBytes) {}
