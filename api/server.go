@@ -146,9 +146,12 @@ func Start(dir, network string, port, storeMode int) error {
 func onKill() {
 	signalChan := make(chan os.Signal, 1) //https://go101.org/article/panic-and-recover-use-cases.html
 	//SIGHUP: Process restart/reload (example: nginx, sshd, apache)? syscall.SIGUSR2?
-	signal.Notify(signalChan, os.Interrupt, os.Kill, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT) //syscall.SIGINT, syscall.SIGTERM, syscall.SIGILL,
+	signal.Notify(signalChan, os.Interrupt, os.Kill, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGPIPE) //syscall.SIGINT, syscall.SIGTERM, syscall.SIGILL,
 
-	<-signalChan
+	q := <-signalChan
+	if q == syscall.SIGPIPE {
+		return
+	}
 	err := pudge.CloseAll()
 	log.Println("Shutdown signal received, exiting...")
 	log.Println("pudge.CloseAll", err)
