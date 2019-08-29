@@ -1,10 +1,9 @@
-package engine
+package main
 
 import (
 	"errors"
 	"os"
 	"path/filepath"
-	
 )
 
 type kvEngine interface {

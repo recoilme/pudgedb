@@ -10,7 +10,6 @@ import (
 	"log"
 	"net"
 	"runtime"
-	"engine"
 )
 
 var (
@@ -18,8 +17,7 @@ var (
 	network    = flag.String("n", "tcp", "Network to listen on (tcp,tcp4,tcp6,unix). unix not tested! Default is tcp")
 	port       = flag.Int("p", 11211, "TCP port number to listen on (default: 11211)")
 	threads    = flag.Int("t", runtime.NumCPU(), fmt.Sprintf("number of threads to use (default: %d)", runtime.NumCPU()))
-	engine       = flag.String("e", "pudge", "database engine name.")
-	
+	enginename = flag.String("e", "hashmap", "database engine name.")
 )
 
 var (
@@ -52,7 +50,7 @@ var (
 
 var (
 	// ErrCacheMiss means that a Get failed because the item wasn't present.
-	ErrCacheMiss = errors.New("memcache: cache miss")
+	ErrCacheMiss = errors.New("memcache: cache miss ")
 
 	// ErrCASConflict means that a CompareAndSwap call failed due to the
 	// cached value being modified between the Get and the CompareAndSwap.
@@ -80,16 +78,23 @@ var (
 )
 
 func main() {
-
-	ctr, err := engine.getEngineCtr(engine)
-	if err != nil {
-		return err
-	}
+	//ctr, err :=  engine.getEngineCtr(engine)
+	//if err != nil {
+	//return err
+	//}
 
 	//dbpath := path.Join(dir, "bench_"+engine)
-	db, err := ctr(dbpath)
+	//db, err := ctr(dbpath)
+	//if err != nil {
+	//return err
+	//}
+	ctr, err := getEngineCtr(*enginename)
 	if err != nil {
-		return err
+		log.Fatal(err)
+	}
+	db, err := ctr("dbpath")
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	address := fmt.Sprintf("%s:%d", *listenaddr, *port)
@@ -110,11 +115,11 @@ func main() {
 			conn.Close()
 			continue
 		}
-		go listen(conn)
+		go listen(conn, db)
 	}
 }
 
-func listen(c net.Conn) {
+func listen(c net.Conn, db kvEngine) {
 	defer c.Close()
 	for {
 		rw := bufio.NewReadWriter(bufio.NewReader(c), bufio.NewWriter(c))
@@ -145,6 +150,7 @@ func listen(c net.Conn) {
 				if err != nil {
 					break
 				}
+				err = db.Put([]byte(key), b[:size])
 				err = OnSet(key, b[:size], flags, exp, size, noreply, rw)
 				if err != nil {
 					log.Println(err)

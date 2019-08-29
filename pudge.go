@@ -1,4 +1,4 @@
-package engine
+package main
 
 import (
 	"github.com/recoilme/pudge"
@@ -6,7 +6,7 @@ import (
 
 func newPudge(path string) (kvEngine, error) {
 	cfg := pudge.DefaultConfig
-	
+
 	//cfg.StoreMode = 2 //uncomment for inmemory mode
 	db, err := pudge.Open(path, cfg)
 	return &pudgeEngine{Db: db, Path: path}, err
