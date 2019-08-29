@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"runtime"
+	"engine"
 )
 
 var (
@@ -17,6 +18,8 @@ var (
 	network    = flag.String("n", "tcp", "Network to listen on (tcp,tcp4,tcp6,unix). unix not tested! Default is tcp")
 	port       = flag.Int("p", 11211, "TCP port number to listen on (default: 11211)")
 	threads    = flag.Int("t", runtime.NumCPU(), fmt.Sprintf("number of threads to use (default: %d)", runtime.NumCPU()))
+	engine       = flag.String("e", "pudge", "database engine name.")
+	
 )
 
 var (
@@ -77,6 +80,17 @@ var (
 )
 
 func main() {
+
+	ctr, err := engine.getEngineCtr(engine)
+	if err != nil {
+		return err
+	}
+
+	//dbpath := path.Join(dir, "bench_"+engine)
+	db, err := ctr(dbpath)
+	if err != nil {
+		return err
+	}
 
 	address := fmt.Sprintf("%s:%d", *listenaddr, *port)
 
