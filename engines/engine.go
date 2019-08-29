@@ -1,19 +1,22 @@
-package main
+package engine
 
 import (
+	"bufio"
 	"errors"
 	"os"
 	"path/filepath"
 )
 
-type kvEngine interface {
+// KvEngine implenets base key/value commands
+type KvEngine interface {
 	Put(key []byte, value []byte) error
 	Get(key []byte) ([]byte, error)
+	Set(key, value []byte, flags uint32, exp int32, size int, noreply bool, rw *bufio.ReadWriter) (bool, error)
 	Close() error
 	FileSize() (int64, error)
 }
 
-type engineCtr func(string) (kvEngine, error)
+type engineCtr func(string) (KvEngine, error)
 
 var engines = map[string]engineCtr{
 	//"pogreb":    newPogreb,
@@ -25,7 +28,8 @@ var engines = map[string]engineCtr{
 	//"buntdb":    newBunt,
 }
 
-func getEngineCtr(name string) (engineCtr, error) {
+// GetEngineCtr return engine by name
+func GetEngineCtr(name string) (engineCtr, error) {
 	if ctr, ok := engines[name]; ok {
 		return ctr, nil
 	}

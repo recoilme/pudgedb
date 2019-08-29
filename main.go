@@ -10,6 +10,9 @@ import (
 	"log"
 	"net"
 	"runtime"
+	"strings"
+
+	engine "github.com/recoilme/pudgedb/engines"
 )
 
 var (
@@ -17,7 +20,7 @@ var (
 	network    = flag.String("n", "tcp", "Network to listen on (tcp,tcp4,tcp6,unix). unix not tested! Default is tcp")
 	port       = flag.Int("p", 11211, "TCP port number to listen on (default: 11211)")
 	threads    = flag.Int("t", runtime.NumCPU(), fmt.Sprintf("number of threads to use (default: %d)", runtime.NumCPU()))
-	enginename = flag.String("e", "hashmap", "database engine name.")
+	enginename = flag.String("e", "pudge", "database engine name.")
 )
 
 var (
@@ -30,9 +33,10 @@ var (
 	cmdClose  = []byte("close")
 	cmdCloseB = []byte("CLOSE")
 
-	crlf                    = []byte("\r\n")
-	space                   = []byte(" ")
-	resultOK                = []byte("OK\r\n")
+	crlf     = []byte("\r\n")
+	space    = []byte(" ")
+	resultOK = []byte("OK\r\n")
+
 	resultStored            = []byte("STORED\r\n")
 	resultNotStored         = []byte("NOT_STORED\r\n")
 	resultExists            = []byte("EXISTS\r\n")
@@ -78,25 +82,18 @@ var (
 )
 
 func main() {
-	//ctr, err :=  engine.getEngineCtr(engine)
-	//if err != nil {
-	//return err
-	//}
 
-	//dbpath := path.Join(dir, "bench_"+engine)
-	//db, err := ctr(dbpath)
-	//if err != nil {
-	//return err
-	//}
-	ctr, err := getEngineCtr(*enginename)
+	ctr, err := engine.GetEngineCtr(*enginename)
 	if err != nil {
 		log.Fatal(err)
 	}
-	db, err := ctr("dbpath")
+	db, err := ctr("db")
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	//engine.GetEngineCtr("")
+	//engine.GetEngineCtr("hashmap")
 	address := fmt.Sprintf("%s:%d", *listenaddr, *port)
 
 	listener, err := net.Listen(*network, address)
@@ -105,7 +102,7 @@ func main() {
 		return
 	}
 	defer listener.Close()
-	fmt.Printf("Server is listening on %s %s", *network, address)
+	fmt.Printf("\nServer is listening on %s %s\n", *network, address)
 	for {
 
 		conn, err := listener.Accept()
@@ -119,7 +116,8 @@ func main() {
 	}
 }
 
-func listen(c net.Conn, db kvEngine) {
+// as described https://github.com/memcached/memcached/blob/master/doc/protocol.txt
+func listen(c net.Conn, db engine.KvEngine) {
 	defer c.Close()
 	for {
 		rw := bufio.NewReadWriter(bufio.NewReader(c), bufio.NewWriter(c))
@@ -150,17 +148,48 @@ func listen(c net.Conn, db kvEngine) {
 				if err != nil {
 					break
 				}
-				err = db.Put([]byte(key), b[:size])
-				err = OnSet(key, b[:size], flags, exp, size, noreply, rw)
+				noreply, err = db.Set([]byte(key), b[:size], flags, exp, size, noreply, rw)
 				if err != nil {
 					log.Println(err)
 				}
+				if !noreply {
+					if err != nil {
+						_, err = rw.Write(resultNotStored)
+						err = nil
+					} else {
+						_, err = rw.Write(resultStored)
+					}
+					if err != nil {
+						break
+					}
+					err = rw.Flush()
+					if err != nil {
+						break
+					}
+				}
 
 			case bytes.HasPrefix(line, cmdGet), bytes.HasPrefix(line, cmdGetB), bytes.HasPrefix(line, cmdGets), bytes.HasPrefix(line, cmdGetsB):
-				if bytes.Count(line, space) == 1 {
+				cntspace := bytes.Count(line, space)
+				if cntspace == 0 || !bytes.HasSuffix(line, crlf) {
+					err = protocolError(rw)
+					if err != nil {
+						break
+					}
 				}
-				//// len args always more zero
-				//args := strings.Split(string(lineb), " ")
+
+				if cntspace == 1 {
+					key := line[(bytes.Index(line, space) + 1) : len(line)-2]
+					//log.Println("'" + string(key) + "'")
+					value, err := db.Get(key)
+					if err == nil && value != nil {
+						fmt.Fprintf(rw, "VALUE %s 0 %d\r\n%s\r\n", key, len(value), value)
+					}
+					rw.Write(resultEnd)
+					rw.Flush()
+				}
+				// len args always more zero
+				args := strings.Split(string(line), " ")
+				gets(args[1:])
 				//fmt.Fprintf(rw, "VALUE a 0 3\r\n123\r\nEND\r\n")
 				//rw.Flush()
 				//log.Println("get", line)
@@ -183,17 +212,7 @@ func listen(c net.Conn, db kvEngine) {
 	}
 
 }
-
-// OnSet - hook on set
-func OnSet(key string, val []byte, flags uint32, exp int32, size int, noreply bool, rw *bufio.ReadWriter) (err error) {
-	//log.Println("OnSet", key, string(val))
-	_, err = rw.Write(resultStored)
-	if err != nil {
-		return
-	}
-	err = rw.Flush()
-	return
-}
+func gets(s []string) {}
 
 // scanSetLine populates it and returns the declared size of the item.
 // It does not read the bytes of the item.
@@ -236,4 +255,13 @@ func resumableError(err error) bool {
 func isASCIILetter(b byte) bool {
 	b |= 0x20 // make lower case
 	return 'a' <= b && b <= 'z'
+}
+
+func protocolError(rw *bufio.ReadWriter) (err error) {
+	_, err = rw.Write(resultError)
+	if err != nil {
+		return
+	}
+	err = rw.Flush()
+	return
 }

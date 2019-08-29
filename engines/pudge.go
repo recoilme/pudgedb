@@ -1,13 +1,15 @@
-package main
+package engine
 
 import (
+	"bufio"
+
 	"github.com/recoilme/pudge"
 )
 
-func newPudge(path string) (kvEngine, error) {
+func newPudge(path string) (KvEngine, error) {
 	cfg := pudge.DefaultConfig
 
-	//cfg.StoreMode = 2 //uncomment for inmemory mode
+	cfg.StoreMode = 2 //uncomment for inmemory mode
 	db, err := pudge.Open(path, cfg)
 	return &pudgeEngine{Db: db, Path: path}, err
 }
@@ -33,4 +35,9 @@ func (en *pudgeEngine) Close() error {
 
 func (en *pudgeEngine) FileSize() (int64, error) {
 	return en.Db.FileSize()
+}
+
+func (en *pudgeEngine) Set(key, value []byte, flags uint32, exp int32, size int, noreply bool, rw *bufio.ReadWriter) (bool, error) {
+	err := en.Db.Set(key, value)
+	return false, err
 }
