@@ -9,9 +9,12 @@ import (
 
 // KvEngine implenets base key/value commands
 type KvEngine interface {
-	Put(key []byte, value []byte) error
-	Get(key []byte) ([]byte, error)
-	Set(key, value []byte, flags uint32, exp int32, size int, noreply bool, rw *bufio.ReadWriter) (bool, error)
+	Get(key []byte, rw *bufio.ReadWriter) (value []byte, noreply bool, err error)
+	Gets(keys [][]byte, rw *bufio.ReadWriter) error
+	Set(key, value []byte, flags uint32, exp int32, size int, noreply bool, rw *bufio.ReadWriter) (noreplyresp bool, err error)
+	Incr(key []byte, value uint64, rw *bufio.ReadWriter) (result uint64, isFound bool, noreply bool, err error)
+	Decr(key []byte, value uint64, rw *bufio.ReadWriter) (result uint64, isFound bool, noreply bool, err error)
+	Delete(key []byte, rw *bufio.ReadWriter) (isFound bool, noreply bool, err error)
 	Close() error
 	FileSize() (int64, error)
 }

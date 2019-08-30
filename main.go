@@ -9,10 +9,12 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
+	"os/signal"
 	"runtime"
-	"strings"
+	"syscall"
 
-	engine "github.com/recoilme/pudgedb/engines"
+	"github.com/recoilme/pudgedb/engine"
 )
 
 var (
@@ -24,14 +26,20 @@ var (
 )
 
 var (
-	cmdSet    = []byte("set")
-	cmdSetB   = []byte("SET")
-	cmdGet    = []byte("get")
-	cmdGetB   = []byte("GET")
-	cmdGets   = []byte("gets")
-	cmdGetsB  = []byte("GETS")
-	cmdClose  = []byte("close")
-	cmdCloseB = []byte("CLOSE")
+	cmdSet     = []byte("set")
+	cmdSetB    = []byte("SET")
+	cmdGet     = []byte("get")
+	cmdGetB    = []byte("GET")
+	cmdGets    = []byte("gets")
+	cmdGetsB   = []byte("GETS")
+	cmdClose   = []byte("close")
+	cmdCloseB  = []byte("CLOSE")
+	cmdDelete  = []byte("delete")
+	cmdDeleteB = []byte("DELETE")
+	cmdIncr    = []byte("incr")
+	cmdIncrB   = []byte("INCR")
+	cmdDecr    = []byte("decr")
+	cmdDecrB   = []byte("DECR")
 
 	crlf     = []byte("\r\n")
 	space    = []byte(" ")
@@ -81,6 +89,11 @@ var (
 	ErrNoServers = errors.New("memcache: no servers configured or available")
 )
 
+func init() {
+	// Workaround for issue #17393.
+	signal.Notify(make(chan os.Signal), syscall.SIGPIPE)
+}
+
 func main() {
 
 	ctr, err := engine.GetEngineCtr(*enginename)
@@ -92,8 +105,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	//engine.GetEngineCtr("")
-	//engine.GetEngineCtr("hashmap")
 	address := fmt.Sprintf("%s:%d", *listenaddr, *port)
 
 	listener, err := net.Listen(*network, address)
@@ -101,6 +112,27 @@ func main() {
 		log.Fatalf("failed to serve: %s", err.Error())
 		return
 	}
+
+	// Wait for interrupt signal to gracefully shutdown the server with
+	// setup signal catching
+	quit := make(chan os.Signal, 1)
+	// catch all signals since not explicitly listing
+	signal.Notify(quit)
+	// method invoked upon seeing signal
+	go func() {
+		q := <-quit
+		log.Printf("RECEIVED SIGNAL: %s", q)
+		if q == syscall.SIGPIPE || q.String() == "broken pipe" {
+			return
+		}
+		err := db.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+		//return
+		os.Exit(1)
+	}()
+	// start service
 	defer listener.Close()
 	fmt.Printf("\nServer is listening on %s %s\n", *network, address)
 	for {
@@ -108,7 +140,7 @@ func main() {
 		conn, err := listener.Accept()
 
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("conn", err)
 			conn.Close()
 			continue
 		}
@@ -180,24 +212,111 @@ func listen(c net.Conn, db engine.KvEngine) {
 				if cntspace == 1 {
 					key := line[(bytes.Index(line, space) + 1) : len(line)-2]
 					//log.Println("'" + string(key) + "'")
-					value, err := db.Get(key)
-					if err == nil && value != nil {
+					value, noreply, err := db.Get(key, rw)
+					if !noreply && err == nil && value != nil {
 						fmt.Fprintf(rw, "VALUE %s 0 %d\r\n%s\r\n", key, len(value), value)
 					}
-					rw.Write(resultEnd)
-					rw.Flush()
+					if !noreply {
+						_, err = rw.Write(resultEnd)
+						if err != nil {
+							break
+						}
+						err = rw.Flush()
+						if err != nil {
+							break
+						}
+					}
+				} else {
+					args := bytes.Split(line, space)
+					//strings.Split(string(line), " ")
+					err = db.Gets(args[1:], rw)
+					if err != nil {
+						break
+					}
 				}
-				// len args always more zero
-				args := strings.Split(string(line), " ")
-				gets(args[1:])
-				//fmt.Fprintf(rw, "VALUE a 0 3\r\n123\r\nEND\r\n")
-				//rw.Flush()
-				//log.Println("get", line)
-				//for _, arg := range args[1:] {
+
 			case bytes.HasPrefix(line, cmdClose), bytes.HasPrefix(line, cmdCloseB):
 				err = errors.New("Close")
 				break
-			}
+
+			case bytes.HasPrefix(line, cmdDelete), bytes.HasPrefix(line, cmdDeleteB):
+				if key, noreply, err := scanDeleteLine(line, bytes.HasPrefix(line, cmdDeleteB)); err == nil {
+					if !noreply {
+						deleted, noreply, _ := db.Delete([]byte(key), rw)
+						if !noreply {
+							if deleted {
+								_, err = rw.Write(resultDeleted)
+							} else {
+								_, err = rw.Write(resultNotFound)
+							}
+							if err != nil {
+								break
+							}
+							err = rw.Flush()
+							if err != nil {
+								break
+							}
+						}
+					}
+				} else {
+					err = protocolError(rw)
+					if err != nil {
+						break
+					}
+				}
+			case bytes.HasPrefix(line, cmdIncr), bytes.HasPrefix(line, cmdIncrB):
+				if key, val, noreply, err := scanIncrDecrLine(line, true, bytes.HasPrefix(line, cmdIncrB)); err == nil {
+					if !noreply {
+						res, isFound, noreply, err := db.Incr([]byte(key), val, rw)
+						if !noreply {
+							if isFound {
+								_, err = fmt.Fprintf(rw, "%d\r\n", res)
+							} else {
+								_, err = rw.Write(resultNotFound)
+							}
+							if err != nil {
+								break
+							}
+							err = rw.Flush()
+							if err != nil {
+								break
+							}
+						}
+					}
+				} else {
+					err = protocolError(rw)
+					if err != nil {
+						break
+					}
+				}
+
+			case bytes.HasPrefix(line, cmdDecr), bytes.HasPrefix(line, cmdDecrB):
+				if key, val, noreply, err := scanIncrDecrLine(line, false, bytes.HasPrefix(line, cmdIncrB)); err == nil {
+					if !noreply {
+						res, isFound, noreply, err := db.Decr([]byte(key), val, rw)
+						if !noreply {
+							if isFound {
+								_, err = fmt.Fprintf(rw, "%d\r\n", res)
+							} else {
+								_, err = rw.Write(resultNotFound)
+							}
+							if err != nil {
+								break
+							}
+							err = rw.Flush()
+							if err != nil {
+								break
+							}
+						}
+					}
+				} else {
+					err = protocolError(rw)
+					if err != nil {
+						break
+					}
+				}
+
+			} //switch
 
 			//check err
 			if err != nil {
@@ -212,9 +331,8 @@ func listen(c net.Conn, db engine.KvEngine) {
 	}
 
 }
-func gets(s []string) {}
 
-// scanSetLine populates it and returns the declared size of the item.
+// scanSetLine populates it and returns the declared params of the item.
 // It does not read the bytes of the item.
 func scanSetLine(line []byte, isCap bool) (key string, flags uint32, exp int32, size int, noreply bool, err error) {
 	//set := ""
@@ -263,5 +381,64 @@ func protocolError(rw *bufio.ReadWriter) (err error) {
 		return
 	}
 	err = rw.Flush()
+	return
+}
+
+// scanDeleteLine populates it and returns the declared params of the item.
+// It does not read the bytes of the item.
+func scanDeleteLine(line []byte, isCap bool) (key string, noreply bool, err error) {
+	//set := ""
+	noreplys := ""
+	noreply = false
+	cmd := "delete"
+	if isCap {
+		cmd = "DELETE"
+	}
+	pattern := cmd + " %s %s\r\n"
+	dest := []interface{}{&key, &noreplys}
+	if bytes.Count(line, space) == 1 {
+		pattern = cmd + " %s\r\n"
+		dest = dest[:1]
+	}
+	if noreplys == "noreply" || noreplys == "NOREPLY" {
+		noreply = true
+	}
+	n, err := fmt.Sscanf(string(line), pattern, dest...)
+	if n != len(dest) {
+		err = errors.New(string(resultError))
+	}
+	return
+}
+
+// scanDeleteLine populates it and returns the declared params of the item.
+// It does not read the bytes of the item.
+func scanIncrDecrLine(line []byte, incr bool, isCap bool) (key string, val uint64, noreply bool, err error) {
+	//set := ""
+	noreplys := ""
+	noreply = false
+	cmd := "incr"
+	if !incr {
+		cmd = "decr"
+	}
+	if isCap {
+		cmd = "INCR"
+		if !incr {
+			cmd = "DECR"
+		}
+	}
+
+	pattern := cmd + " %s %d %s\r\n"
+	dest := []interface{}{&key, &val, &noreplys}
+	if bytes.Count(line, space) == 2 {
+		pattern = cmd + " %s %d\r\n"
+		dest = dest[:2]
+	}
+	if noreplys == "noreply" || noreplys == "NOREPLY" {
+		noreply = true
+	}
+	n, err := fmt.Sscanf(string(line), pattern, dest...)
+	if n != len(dest) {
+		err = errors.New(string(resultError))
+	}
 	return
 }
