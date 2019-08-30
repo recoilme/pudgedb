@@ -39,6 +39,7 @@ func (en *pudgeEngine) Gets(keys [][]byte, rw *bufio.ReadWriter) error {
 	}
 	wg.Add(len(keys))
 	for _, key := range keys {
+		//log.Println(string(key))
 		go read(key)
 	}
 	wg.Wait()

@@ -121,7 +121,7 @@ func main() {
 	// method invoked upon seeing signal
 	go func() {
 		q := <-quit
-		log.Printf("RECEIVED SIGNAL: %s", q)
+		log.Printf("\nRECEIVED SIGNAL: %s\n", q)
 		if q == syscall.SIGPIPE || q.String() == "broken pipe" {
 			return
 		}
@@ -227,7 +227,7 @@ func listen(c net.Conn, db engine.KvEngine) {
 						}
 					}
 				} else {
-					args := bytes.Split(line, space)
+					args := bytes.Split(line[:len(line)-2], space)
 					//strings.Split(string(line), " ")
 					err = db.Gets(args[1:], rw)
 					if err != nil {
