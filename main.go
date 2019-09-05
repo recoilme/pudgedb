@@ -125,7 +125,7 @@ func main() {
 	// method invoked upon seeing signal
 	go func() {
 		q := <-quit
-		log.Printf("\nRECEIVED SIGNAL: %s\n", q)
+		fmt.Printf("\nRECEIVED SIGNAL: %s\n", q)
 		if q == syscall.SIGPIPE || q.String() == "broken pipe" {
 			return
 		}
@@ -163,7 +163,7 @@ func listen(c net.Conn, db engine.KvEngine, debug bool) {
 			if err.Error() != "EOF" {
 				//network error and so on
 				if debug {
-					log.Println(err)
+					fmt.Println(err)
 				}
 			} else {
 				break //close connection
@@ -175,7 +175,7 @@ func listen(c net.Conn, db engine.KvEngine, debug bool) {
 				//log.Println("set", line)
 				key, flags, exp, size, noreply, err := scanSetLine(line, bytes.HasPrefix(line, cmdSetB))
 				if err != nil || size == -1 {
-					log.Println(err, size)
+					fmt.Println(err, size)
 					rw.Write(resultError)
 					rw.Flush()
 					err = nil
@@ -188,7 +188,7 @@ func listen(c net.Conn, db engine.KvEngine, debug bool) {
 				}
 				noreply, err = db.Set([]byte(key), b[:size], flags, exp, size, noreply, rw)
 				if err != nil {
-					log.Println(err)
+					fmt.Println(err)
 				}
 				if !noreply {
 					if err != nil {
@@ -327,7 +327,7 @@ func listen(c net.Conn, db engine.KvEngine, debug bool) {
 			//check err
 			if err != nil {
 				if resumableError(err) {
-					log.Println(err)
+					fmt.Println(err)
 				} else {
 					break //close connection
 				}

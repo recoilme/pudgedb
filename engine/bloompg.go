@@ -26,7 +26,7 @@ func newBloompg(params string, dbg bool) (KvEngine, error) {
 	if len(m["connStr"]) > 0 {
 		connStr = m["connStr"][0]
 	} else {
-		log.Println("connStr not set, fallback to default")
+		fmt.Println("connStr not set, fallback to default")
 	}
 
 	pg, err := sql.Open("postgres", connStr)
@@ -37,7 +37,7 @@ func newBloompg(params string, dbg bool) (KvEngine, error) {
 	bl := make(map[int]*bloom, 0)
 	en, err := &bloompgEngine{Pg: pg, Bls: bl, Dbg: dbg}, err
 	name, err := en.getSegmentName(9)
-	log.Println(name, err)
+	fmt.Println(name, err)
 	return en, err
 }
 
@@ -81,11 +81,11 @@ func (en *bloompgEngine) Gets(keys [][]byte, rw *bufio.ReadWriter) error {
 					//log.Println(segment)
 					if _, ok := en.Bls[segment]; !ok {
 						if en.Dbg {
-							log.Println("Loading segment", segment)
+							fmt.Println("Loading segment", segment)
 						}
 						err := en.loadSegment(segment)
 						if err != nil {
-							log.Println(err)
+							fmt.Println(err)
 						}
 					} else {
 						//loaded segment
@@ -98,7 +98,7 @@ func (en *bloompgEngine) Gets(keys [][]byte, rw *bufio.ReadWriter) error {
 			res := ""
 			for _, check := range argschecks {
 				if en.Dbg {
-					log.Println(check)
+					fmt.Println(check)
 				}
 				res += check + ":"
 				for _, segm := range segments {
@@ -132,10 +132,10 @@ func (en *bloompgEngine) Gets(keys [][]byte, rw *bufio.ReadWriter) error {
 			}
 			fmt.Fprintf(rw, "VALUE check 0 %d\r\n%s\r\n", len([]byte(res)), res)
 		} else {
-			log.Println(err)
+			fmt.Println(err)
 		}
 	} else {
-		log.Println("wrong params len, need 3, got:", len(keys))
+		fmt.Println("wrong params len, need 3, got:", len(keys))
 	}
 
 	_, err := rw.Write([]byte("END\r\n"))
@@ -200,7 +200,7 @@ func (en *bloompgEngine) getSegmentName(id int) (name string, err error) {
 func (en *bloompgEngine) loadSegment(id int) (err error) {
 	rows, err := en.Pg.Query("SELECT bloomfilter_raw FROM adroom_outer_cookie_segments WHERE id = $1", id)
 	if err != nil {
-		log.Println("SELECT err", err, id)
+		fmt.Println("SELECT err", err, id)
 		return
 	}
 	defer rows.Close()
@@ -209,7 +209,7 @@ func (en *bloompgEngine) loadSegment(id int) (err error) {
 		//log.Println("start scan")
 		err = rows.Scan(&b)
 		if err != nil {
-			log.Println("SELECT scan err", err, id)
+			fmt.Println("SELECT scan err", err, id)
 			return
 		}
 		break
@@ -234,9 +234,8 @@ func (en *bloompgEngine) loadSegment(id int) (err error) {
 	bs2[0] = b[1]
 	power := binary.LittleEndian.Uint64(bs2)
 
-	if en.Dbg {
-		log.Println("Loaded,", id, k, power, len(b))
-	}
+	fmt.Printf("Loaded, id:%d k:%d power:%d len:%d", id, k, power, len(b))
+
 	bl := &bloom{}
 	bl.bitmap = b[2:]
 	bl.k = int(k)
