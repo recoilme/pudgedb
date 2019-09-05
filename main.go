@@ -22,7 +22,9 @@ var (
 	network    = flag.String("n", "tcp", "Network to listen on (tcp,tcp4,tcp6,unix). unix not tested! Default is tcp")
 	port       = flag.Int("p", 11211, "TCP port number to listen on (default: 11211)")
 	threads    = flag.Int("t", runtime.NumCPU(), fmt.Sprintf("number of threads to use (default: %d)", runtime.NumCPU()))
-	enginename = flag.String("e", "pudge", "database engine name.")
+	enginename = flag.String("e", "pudge", "database engine name. pudge,bloompg")
+	params     = flag.String("params", "", "params for engine, url query format:a=b&c=d")
+	debug      = flag.Bool("debug", false, "--debug=true")
 )
 
 var (
@@ -95,12 +97,14 @@ func init() {
 }
 
 func main() {
+	flag.Parse()
+	fmt.Printf("Start engine:%s with params:%s \n", *enginename, *params)
 
 	ctr, err := engine.GetEngineCtr(*enginename)
 	if err != nil {
 		log.Fatal(err)
 	}
-	db, err := ctr("db")
+	db, err := ctr(*params, *debug)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -134,7 +138,7 @@ func main() {
 	}()
 	// start service
 	defer listener.Close()
-	fmt.Printf("\nServer is listening on %s %s\n", *network, address)
+	fmt.Printf("\nServer is listening on %s %s \n", *network, address)
 	for {
 
 		conn, err := listener.Accept()
@@ -144,12 +148,12 @@ func main() {
 			conn.Close()
 			continue
 		}
-		go listen(conn, db)
+		go listen(conn, db, *debug)
 	}
 }
 
 // as described https://github.com/memcached/memcached/blob/master/doc/protocol.txt
-func listen(c net.Conn, db engine.KvEngine) {
+func listen(c net.Conn, db engine.KvEngine, debug bool) {
 	defer c.Close()
 	for {
 		rw := bufio.NewReadWriter(bufio.NewReader(c), bufio.NewWriter(c))
@@ -158,7 +162,9 @@ func listen(c net.Conn, db engine.KvEngine) {
 		if err != nil {
 			if err.Error() != "EOF" {
 				//network error and so on
-				//log.Println(err)
+				if debug {
+					log.Println(err)
+				}
 			} else {
 				break //close connection
 			}

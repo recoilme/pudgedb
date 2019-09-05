@@ -3,12 +3,29 @@ package engine
 import (
 	"bufio"
 	"fmt"
+	"log"
+	"net/url"
 	"sync"
 
 	"github.com/recoilme/pudge"
 )
 
-func newPudge(path string) (KvEngine, error) {
+// newPudge open new pudge database
+// params - path, example: -params path=db
+// set db, if not set
+func newPudge(params string, dbg bool) (KvEngine, error) {
+
+	m, err := url.ParseQuery(params)
+	if err != nil {
+		log.Fatal(err)
+	}
+	path := "db"
+	if len(m["path"]) > 0 {
+		path = m["path"][0]
+	} else {
+		log.Println("path not set, fallback to db (-params path=db)")
+	}
+
 	cfg := pudge.DefaultConfig
 
 	cfg.StoreMode = 2 //uncomment for inmemory mode

@@ -19,20 +19,21 @@ type KvEngine interface {
 	FileSize() (int64, error)
 }
 
-type engineCtr func(string) (KvEngine, error)
+// Ctr - engine controller
+type Ctr func(string, bool) (KvEngine, error)
 
-var engines = map[string]engineCtr{
+var engines = map[string]Ctr{
 	//"pogreb":    newPogreb,
 	//"goleveldb": newGolevelDB,
 	//"bolt":      newBolt,
 	//"badgerdb":  newBadgerdb,
-	//"slowpoke":  newSlowpoke,
-	"pudge": newPudge,
+	"pudge":   newPudge,
+	"bloompg": newBloompg,
 	//"buntdb":    newBunt,
 }
 
 // GetEngineCtr return engine by name
-func GetEngineCtr(name string) (engineCtr, error) {
+func GetEngineCtr(name string) (Ctr, error) {
 	if ctr, ok := engines[name]; ok {
 		return ctr, nil
 	}
