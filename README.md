@@ -8,6 +8,16 @@ pudgedb предоставляет мемкеш интерфейс к движк
 Движок может имплементировать, любую из поддерживаемых комманд и отвечать на нее.
 
 
+**Сборка**
+
+```
+go get github.com/recoilme/pudgedb
+cd $GOPATH/github.com/recoilme/pudgedb
+go get -d ./...
+go build
+```
+
+
 **Поддерживаемые команды**
 
 ```
